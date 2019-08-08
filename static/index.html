@@ -1,0 +1,157 @@
+<!doctype html>
+<html>
+<head>
+	<title>Amphibian Lookup</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.5.1/dist/leaflet.css" integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ==" crossorigin=""/>
+
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+	<script src="https://unpkg.com/leaflet@1.5.1/dist/leaflet.js"
+		integrity="sha512-GffPMF3RvMeYyc1LWMHtK8EbPv0iNZ8/oTtHPx9/cc2ILxQ+u905qIwdpULaqDkyBKgOaB57QTMg7ztg8Jm2Og=="
+		crossorigin=""></script>
+
+	<style>
+	html, body, #map {
+    	width: auto;
+    	height: 100%;
+	}
+	body {
+    	padding: 0;
+    	margin: 0;
+	}
+	#logoContainer {
+    	position: fixed;
+    	z-index: 100;
+    	bottom: 15px;
+    	left: 15px;
+    	background-color: white;
+    	border: 1px solid black;
+    	width: 450px;
+    	height: 128px;
+	font-size: 12px; 
+	line-height: 1.5;
+	font-family: "Helvetica Neue", Arial, Helvetica, sans-serif;
+	font-weight: normal;
+
+	}
+	</style>
+</head>
+
+<body>
+
+	<div id="map"></div>
+
+	<div id="logoContainer">
+		<img src='https://amphibiaweb.org/images/Amphibiaweb_logo_art.png' width=80 height=80 align=left hspace=10 vspace=5>
+	    <b>SpeciesLookup</b> is a species query service returning a list of amphibian species whose ranges intersect at a location. Code was developed by Chenyu Shi, Undergraduate, Museum of Vertebrate Zoology, UC Berkeley.  
+	    <p>You can call the query service yourself with:
+	    <br>&nbsp;https://specieslookup.berkeley.edu/search_json/[longitude,latitude]
+	</div>
+
+	<script>
+		// Globals
+		var infoMarker;
+		var queryURLRoot = 'https://specieslookup.berkeley.edu/search_json/'
+
+		// Topo map layer
+		var topo = L.tileLayer(
+		    'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+		    {
+			maxZoom: 17,
+			attribution:
+			'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+		    }
+		)
+
+		// Satellite map layer
+		var satellite = L.tileLayer(
+		    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+		    {
+			attribution:
+			'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+		    }
+		)
+		// Initializes map
+		var map = L.map('map', {
+		    layers: [satellite, topo]
+		})
+
+	    // Opens the map at user's current location or not
+	    navigator.geolocation.getCurrentPosition(function (location) {
+			latlng = new L.LatLng(
+		    	location.coords.latitude,
+		    	location.coords.longitude
+			)
+			map.setView(latlng, 13)
+				initMap();
+	    	},
+			// If user declined location services, set to world
+	    	function(error) {
+				map.setView(new L.LatLng(0,0),2 )
+				initMap();
+	    	} 
+	    );
+
+
+	    function initMap() {
+			L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+		    	attribution: 'Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors, <a href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>',
+		    	maxZoom: 18
+			}).addTo(map)
+
+			var baseMaps = {
+		    	'Default Map': map,
+		    	'Topo': topo,
+		    	'Satellite': satellite
+			}
+
+			L.control.layers(baseMaps).addTo(map)
+
+			// Waits for a click event
+			map.on('click', addMarker)
+
+			infoMarker = L.marker(map.getCenter())
+
+			var mapControlsContainer = document.getElementsByClassName("leaflet-control")[0];
+			var logoContainer = document.getElementById("logoContainer");
+			mapControlsContainer.appendChild(logoContainer);
+	    }
+
+		// When map is clicked add a marker to it
+		function addMarker(e) {
+		    infoMarker.setLatLng(e.latlng).addTo(map)
+
+		    // Status loading message
+		    infoMarker.bindPopup('Looking for species. Please Wait ...')
+		    infoMarker.openPopup()
+
+		    // Construct the URL to query by appending the lat/lng of the marker location that was clicked
+		    queryURL = queryURLRoot + e.latlng.lng + ',' + e.latlng.lat
+
+		    $.getJSON(queryURL, function (data) {
+			var htmlText = 'Species Lookup Results:'
+			var foundSpecies = false;
+			$.each(data.species, function (key, val) {
+			    htmlText =
+				htmlText +
+				'<li><a href="' +
+				val.url +
+				'" target=_blank>' +
+				val.scientific_name +
+				'</a></li>';
+			    foundSpecies = true;
+			})
+
+			// Update the marker text
+			if (foundSpecies)
+				infoMarker.bindPopup(htmlText)
+			else 
+				infoMarker.bindPopup("No species found at this location!")
+			//infoMarker.updatePopup()
+		    })
+		}
+	</script>
+    </body>
+
+</html>
